@@ -119,3 +119,21 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
 	 You'll also need to calculate the radar NIS.
 	 */
 }
+
+/**
+ * Normalize an angle between -M_PI and M_PI
+ */
+double UKF::NormalizeAngle(double angle)
+{
+	if (angle > M_PI)
+	{
+		double temp = fmod((angle - M_PI), (2 * M_PI)); // -= 2. * M_PI;
+		angle = temp - M_PI;
+	}
+	if (angle < -M_PI)
+	{
+		double temp = fmod((angle + M_PI), (2 * M_PI));
+		angle = temp + M_PI;
+	}
+	return angle;
+}
