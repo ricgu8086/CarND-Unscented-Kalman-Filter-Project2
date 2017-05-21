@@ -53,6 +53,27 @@ UKF::UKF()
 
 	 Hint: one or more values initialized above might be wildly off...
 	 */
+
+	// time when the state is true, in us
+	time_us_ = 0;
+
+	// initially set to false, set to true in first call of ProcessMeasurement
+	is_initialized_ = false;
+
+	// State dimension
+	n_x_ = 5;
+
+	// Augmented state dimension
+	n_aug_ = n_x_ + 2;
+
+	// Sigma point spreading parameter
+	lambda_ = 3 -n_x_;
+
+	// the current NIS for radar
+	NIS_radar_ = 0;
+
+	// the current NIS for laser
+	NIS_laser_ = 0;
 }
 
 UKF::~UKF()
@@ -71,6 +92,29 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
 	 Complete this function! Make sure you switch between lidar and radar
 	 measurements.
 	 */
+
+	/* Prediction */
+	/**************/
+
+	/* Generate Sigma Points */
+
+	/* Predict Sigma Points */
+
+	/* Predict Mean and Covariance */
+
+
+
+	/* Update */
+	/*********/
+
+	/* Predict Measurement */
+
+	/* Update State */
+
+	if(meas_package.sensor_type_ == MeasurementPackage::LASER)
+		UpdateLidar(meas_package);
+	else
+		UpdateRadar(meas_package);
 }
 
 /**
