@@ -66,6 +66,9 @@ public:
 	///* Augmented state dimension
 	int n_aug_;
 
+	///* Number of Sigma points
+	int n_sig_;
+
 	///* Sigma point spreading parameter
 	double lambda_;
 
@@ -114,6 +117,27 @@ public:
 	 * Normalize an angle between -M_PI and M_PI
 	 */
 	double NormalizeAngle(double angle);
+
+	/**
+	 * Apply the CTRV process model
+	 */
+	VectorXd ProcessModel(VectorXd SigmaPoint, double delta_t);
+
+	/**
+	 * Generate the sigma points that represent the distribution
+	 */
+	MatrixXd GenerateSigmaPoints(void);
+
+	/**
+	 * Move the sigma points through the process model
+	 */
+	MatrixXd PredictSigmaPoints(MatrixXd Sigma_p, double delta_t);
+
+	/**
+	 * Recover the approximate gaussian distribution from predicted sigma points
+	 */
+	void PredictMeanCovariance(MatrixXd Sigma_p_pred);
+
 };
 
 #endif /* UKF_H */

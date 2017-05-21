@@ -66,8 +66,21 @@ UKF::UKF()
 	// Augmented state dimension
 	n_aug_ = n_x_ + 2;
 
+	// Number of Sigma points
+	n_sig_ = 2*n_aug_+1;
+
 	// Sigma point spreading parameter
-	lambda_ = 3 -n_x_;
+	lambda_ = 3 - n_x_;
+
+	// Weights of sigma points
+	weights_ = VectorXd(n_aug_);
+
+	weights_(0) = lambda_/(lambda_ + n_aug_);
+
+	double w = 1/(2*(lambda_ + n_aug_));
+
+	for(int i=1; i<n_sig_; i++)
+		weights_(i) = w;
 
 	// the current NIS for radar
 	NIS_radar_ = 0;
@@ -96,11 +109,8 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
 	/* Prediction */
 	/**************/
 
-	/* Generate Sigma Points */
-
-	/* Predict Sigma Points */
-
-	/* Predict Mean and Covariance */
+	double dt = meas_package.timestamp_; // TODO subtract previous timestamp
+	Prediction(dt);
 
 
 
@@ -125,12 +135,20 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
 void UKF::Prediction(double delta_t)
 {
 	/**
-	 TODO:
-
 	 Complete this function! Estimate the object's location. Modify the state
 	 vector, x_. Predict sigma points, the state, and the state covariance matrix.
 	 */
+
+	/* Generate Sigma Points */
+	MatrixXd Sigma_p = GenerateSigmaPoints();
+
+	/* Predict Sigma Points */
+	MatrixXd Sigma_p_pred = PredictSigmaPoints(Sigma_p, delta_t);
+
+	/* Predict Mean and Covariance */
+	PredictMeanCovariance(Sigma_p_pred);
 }
+
 
 /**
  * Updates the state and the state covariance matrix using a laser measurement.
@@ -180,4 +198,108 @@ double UKF::NormalizeAngle(double angle)
 		angle = temp + M_PI;
 	}
 	return angle;
+}
+
+/**
+ * Apply the CTRV process model
+ */
+VectorXd UKF::ProcessModel(VectorXd SigmaPoint, double delta_t)
+{
+	VectorXd SigmaPointPred(n_x_), x, operand1(n_x_), operand2(n_x_);
+	double v, psi, psi_dot, nu_a, nu_psi_dotdot;
+
+
+	x = SigmaPoint;
+
+	v = x(2);
+	psi = x(3);
+	psi_dot = x(4);
+	nu_a = x(5);
+	nu_psi_dotdot = x(6);
+
+	if (fabs(psi_dot) < 0.0001 ) // it's zero
+	{
+		operand1 << v*cos(psi)*delta_t,
+					v*sin(psi)*delta_t,
+					0,
+					psi_dot*delta_t,
+					0;
+	}
+	else //it's not zero
+	{
+		operand1 << max(v/psi_dot, 0.0001)*(sin(psi + psi_dot*delta_t) - sin(psi)),
+					max(v/psi_dot, 0.0001)*(-cos(psi + psi_dot*delta_t) + cos(psi)),
+					0,
+					psi_dot*delta_t,
+					0;
+	}
+
+	operand2 << 1/2.0*delta_t*delta_t*cos(psi)*nu_a,
+				1/2.0*delta_t*delta_t*sin(psi)*nu_a,
+				delta_t*nu_a,
+				1/2.0*delta_t*delta_t*nu_psi_dotdot,
+				delta_t*nu_psi_dotdot;
+
+	SigmaPointPred = x.head(5) + operand1 + operand2;
+
+	return SigmaPointPred;
+}
+
+/**
+ * Generate the sigma points that represent the distribution
+ */
+MatrixXd UKF::GenerateSigmaPoints(void)
+{
+	MatrixXd sigma_p(n_aug_, n_sig_);
+
+	sigma_p.col(0) = x_;
+
+	//calculate square root of P
+	MatrixXd A = P_.llt().matrixL();
+
+	double scaling_factor = sqrt(lambda_ + n_aug_);
+
+	for(int i=1; i<n_aug_; i++)
+	{
+		sigma_p.col(i) = x_ + scaling_factor*A.col(i);
+		sigma_p.col(i + n_aug_) = x_ - scaling_factor*A.col(i);
+	}
+
+	return sigma_p;
+}
+
+/**
+ * Move the sigma points through the process model
+ */
+MatrixXd UKF::PredictSigmaPoints(MatrixXd Sigma_p, double delta_t)
+{
+	MatrixXd predicted(n_aug_, n_sig_);
+
+	for(int i=0; i<n_sig_; i++)
+		predicted.col(i) = ProcessModel(Sigma_p.col(i), delta_t);
+
+	return predicted;
+}
+
+/**
+ * Recover the approximate gaussian distribution from predicted sigma points
+ */
+void UKF::PredictMeanCovariance(MatrixXd Sigma_p_pred)
+{
+	// Mean
+	x_.setZero();
+
+	for(int i=0; i<n_sig_; i++)
+		x_ += weights_(i)*Sigma_p_pred.col(i);
+
+	// Covariance
+	P_.setZero();
+
+	VectorXd x_diff;
+
+	for(int i=0; i<n_sig_; i++)
+	{
+		x_diff = Sigma_p_pred.col(i)- x_;
+		P_ += weights_(i)*x_diff*x_diff.transpose();
+	}
 }
