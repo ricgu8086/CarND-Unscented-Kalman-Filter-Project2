@@ -6,3 +6,4 @@ build/
 .cproject
 .project
 .settings/
+data/output.txt
