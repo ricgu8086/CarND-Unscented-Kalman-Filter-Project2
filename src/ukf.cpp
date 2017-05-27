@@ -208,19 +208,37 @@ MatrixXd UKF::Prediction(double delta_t)
  */
 MatrixXd UKF::GenerateSigmaPoints(void)
 {
+	// Augmentation step
+
+	// Create augmented mean state x
+	VectorXd x_augmented(n_aug_);
+	x_augmented.setZero();
+	x_augmented.head(n_x_);
+	x_augmented(n_aug_-2) = std_a_;
+	x_augmented(n_aug_-1) = std_yawdd_;
+
+	// Create augmented covariance matrix p
+	MatrixXd p_augmented(n_aug_, n_aug_);
+	p_augmented.setZero();
+	p_augmented.topLeftCorner(n_x_, n_x_) = P_;
+	p_augmented.bottomRightCorner(2, 2) = std_a_*std_a_*MatrixXd::Identity(2,2); // std_a_ = std_yawdd_
+
+
+
 	MatrixXd sigma_p(n_aug_, n_sig_);
 
-	sigma_p.col(0) = x_;
+
+	sigma_p.col(0) = x_augmented;
 
 	//calculate square root of P
-	MatrixXd A = P_.llt().matrixL();
+	MatrixXd A = p_augmented.llt().matrixL();
 
 	double scaling_factor = sqrt(lambda_ + n_aug_);
 
-	for(int i=1; i<n_aug_; i++)
+	for(int i=1; i<n_aug_; i++) // for my future self: n_aug_ is correct, don't use n_sig_
 	{
-		sigma_p.col(i) = x_ + scaling_factor*A.col(i);
-		sigma_p.col(i + n_aug_) = x_ - scaling_factor*A.col(i);
+		sigma_p.col(i) = x_augmented + scaling_factor*A.col(i);
+		sigma_p.col(i + n_aug_) = x_augmented - scaling_factor*A.col(i);
 	}
 
 	return sigma_p;
