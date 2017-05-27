@@ -21,9 +21,11 @@ UKF::UKF()
 
 	// initial state vector
 	x_ = VectorXd(5);
+	x_.setZero();
 
 	// initial covariance matrix
 	P_ = MatrixXd(5, 5);
+	P_.setZero();
 
 	// Process noise standard deviation longitudinal acceleration in m/s^2
 	std_a_ = 30;
@@ -56,6 +58,9 @@ UKF::UKF()
 
 	// time when the state is true, in us
 	time_us_ = 0;
+
+	// Previous timestamp in microseconds
+	previous_timestamp_ = 0;
 
 	// initially set to false, set to true in first call of ProcessMeasurement
 	is_initialized_ = false;
@@ -92,7 +97,7 @@ UKF::UKF()
 	lambda_ = 3 - n_x_;
 
 	// Weights of sigma points
-	weights_ = VectorXd(n_aug_);
+	weights_ = VectorXd(n_sig_);
 
 	weights_(0) = lambda_/(lambda_ + n_aug_);
 
@@ -119,16 +124,51 @@ UKF::~UKF()
 void UKF::ProcessMeasurement(MeasurementPackage meas_package)
 {
 	/**
-	 TODO:
 
 	 Complete this function! Make sure you switch between lidar and radar
 	 measurements.
 	 */
 
+	if(!is_initialized_)
+	{
+		//Initialize state x, P and timestamp
+		if(meas_package.sensor_type_ == MeasurementPackage::LASER)
+		{
+			x_ << meas_package.raw_measurements_[0], meas_package.raw_measurements_[1], 0, 0, 0;
+
+			P_(0,0) = std_laspx_;
+			P_(1,1) = std_laspy_;
+			P_(2,2) = 10;
+			P_(3,3) = 10;
+			P_(4,4) = 10;
+		}
+		else
+		{
+			// Convert radar from polar to cartesian coordinates and initialize state.
+
+			double rho = meas_package.raw_measurements_[0];
+			double phi = meas_package.raw_measurements_[1];
+			x_ << rho*cos(phi), rho*sin(phi), 0, 0, 0;
+
+			P_(0,0) = std_radr_; // std_radr_ is bigger than std_radphi_
+			P_(1,1) = std_radr_;
+			P_(2,2) = 10;
+			P_(3,3) = 10;
+			P_(4,4) = 10;
+		}
+
+		previous_timestamp_ = meas_package.timestamp_;
+		is_initialized_ = true;
+
+		return;
+
+	}
+
 	/* Prediction */
 	/**************/
 
-	double dt = meas_package.timestamp_; // TODO subtract previous timestamp
+	double dt = (meas_package.timestamp_ - previous_timestamp_) / 1000000.0; // dt in seconds
+
 	MatrixXd x_sigma_pred = Prediction(dt);
 
 
