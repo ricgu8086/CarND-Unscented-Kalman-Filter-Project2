@@ -17,7 +17,7 @@ void check_arguments(int argc, char* argv[])
 {
 	string usage_instructions = "Usage instructions: ";
 	usage_instructions += argv[0];
-	usage_instructions += " path/to/input.txt output.txt";
+	usage_instructions += " path/to/input.txt output.txt [LIDAR_ENABLED RADAR_ENABLED]";
 
 	bool has_valid_args = false;
 
@@ -31,11 +31,11 @@ void check_arguments(int argc, char* argv[])
 		cerr << "Please include an output file.\n" << usage_instructions
 				<< endl;
 	}
-	else if (argc == 3)
+	else if (argc == 3 || argc == 5)
 	{
 		has_valid_args = true;
 	}
-	else if (argc > 3)
+	else if (argc > 5)
 	{
 		cerr << "Too many arguments.\n" << usage_instructions << endl;
 	}
@@ -75,6 +75,24 @@ int main(int argc, char* argv[])
 
 	check_files(in_file_, in_file_name_, out_file_, out_file_name_);
 
+	bool LIDAR_ENABLED = true;
+	bool RADAR_ENABLED = true;
+
+	if (argc == 5)
+	{
+		if (argv[3] != string("LIDAR_ENABLED"))
+		{
+			cout << "LIDAR measurements are ignored. Set flag LIDAR_ENABLED to use them." << endl;
+			LIDAR_ENABLED = false;
+		}
+
+		if (argv[4] != string("RADAR_ENABLED"))
+		{
+			cout << "RADAR measurements are ignored. Set flag RADAR_ENABLED to use them." << endl;
+			RADAR_ENABLED = false;
+		}
+	}
+
 	/**********************************************
 	 *  Set Measurements                          *
 	 **********************************************/
@@ -93,11 +111,12 @@ int main(int argc, char* argv[])
 		GroundTruthPackage gt_package;
 		istringstream iss(line);
 		long long timestamp;
+		bool valid_measure = false;
 
 		// reads first element from the current line
 		iss >> sensor_type;
 
-		if (sensor_type.compare("L") == 0)
+		if (sensor_type.compare("L") == 0 && LIDAR_ENABLED)
 		{
 			// laser measurement
 
@@ -112,8 +131,9 @@ int main(int argc, char* argv[])
 			iss >> timestamp;
 			meas_package.timestamp_ = timestamp;
 			measurement_pack_list.push_back(meas_package);
+			valid_measure = true;
 		}
-		else if (sensor_type.compare("R") == 0)
+		else if (sensor_type.compare("R") == 0 && RADAR_ENABLED)
 		{
 			// radar measurement
 
@@ -130,20 +150,24 @@ int main(int argc, char* argv[])
 			iss >> timestamp;
 			meas_package.timestamp_ = timestamp;
 			measurement_pack_list.push_back(meas_package);
+			valid_measure = true;
 		}
 
 		// read ground truth data to compare later
-		float x_gt;
-		float y_gt;
-		float vx_gt;
-		float vy_gt;
-		iss >> x_gt;
-		iss >> y_gt;
-		iss >> vx_gt;
-		iss >> vy_gt;
-		gt_package.gt_values_ = VectorXd(4);
-		gt_package.gt_values_ << x_gt, y_gt, vx_gt, vy_gt;
-		gt_pack_list.push_back(gt_package);
+		if(valid_measure)
+		{
+			float x_gt;
+			float y_gt;
+			float vx_gt;
+			float vy_gt;
+			iss >> x_gt;
+			iss >> y_gt;
+			iss >> vx_gt;
+			iss >> vy_gt;
+			gt_package.gt_values_ = VectorXd(4);
+			gt_package.gt_values_ << x_gt, y_gt, vx_gt, vy_gt;
+			gt_pack_list.push_back(gt_package);
+		}
 	}
 
 	// Create a UKF instance
