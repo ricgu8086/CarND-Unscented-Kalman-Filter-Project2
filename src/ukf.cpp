@@ -213,7 +213,7 @@ MatrixXd UKF::GenerateSigmaPoints(void)
 	// Create augmented mean state x
 	VectorXd x_augmented(n_aug_);
 	x_augmented.setZero();
-	x_augmented.head(n_x_);
+	x_augmented.head(n_x_) = x_;
 	x_augmented(n_aug_-2) = std_a_;
 	x_augmented(n_aug_-1) = std_yawdd_;
 
@@ -249,7 +249,7 @@ MatrixXd UKF::GenerateSigmaPoints(void)
  */
 MatrixXd UKF::PredictSigmaPoints(MatrixXd Sigma_p, double delta_t)
 {
-	MatrixXd predicted(n_aug_, n_sig_);
+	MatrixXd predicted(n_x_, n_sig_);
 
 	for(int i=0; i<n_sig_; i++)
 		predicted.col(i) = ProcessModel(Sigma_p.col(i), delta_t);
@@ -297,7 +297,7 @@ VectorXd UKF::ProcessModel(VectorXd SigmaPoint, double delta_t)
 				1/2.0*delta_t*delta_t*nu_psi_dotdot,
 				delta_t*nu_psi_dotdot;
 
-	SigmaPointPred = x.head(5) + operand1 + operand2;
+	SigmaPointPred = x.head(n_x_) + operand1 + operand2;
 
 	return SigmaPointPred;
 }
@@ -374,7 +374,7 @@ pair< pair<VectorXd, MatrixXd>, MatrixXd>  UKF::PredictMeasurementRadar(MatrixXd
 		}
 	} h_radar;
 
-	for(int i=0; i<sigma_points.cols(); i++)
+	for(int i=0; i<n_sig_; i++)
 		z_sig.col(i) = h_radar.transform(sigma_points.col(i), n_z_radar_);
 
 
@@ -383,7 +383,7 @@ pair< pair<VectorXd, MatrixXd>, MatrixXd>  UKF::PredictMeasurementRadar(MatrixXd
 
 	z_pred.setZero();
 
-	for(int i=0; i<z_sig.cols(); i++)
+	for(int i=0; i<n_sig_; i++)
 		z_pred += weights_(i)*z_sig.col(i);
 
 	//calculate measurement covariance matrix
@@ -392,7 +392,7 @@ pair< pair<VectorXd, MatrixXd>, MatrixXd>  UKF::PredictMeasurementRadar(MatrixXd
 	S.setZero();
 	VectorXd factor(n_z_radar_);
 
-	for(int i=0; i<z_sig.cols(); i++)
+	for(int i=0; i<n_sig_; i++)
 	{
 	  factor = z_sig.col(i) - z_pred;
 	  //Normalization
@@ -431,7 +431,7 @@ pair< pair<VectorXd, MatrixXd>, MatrixXd> UKF::PredictMeasurementLidar(MatrixXd 
 		}
 	} h_lidar;
 
-	for(int i=0; i<x_sigma_pred.cols(); i++)
+	for(int i=0; i<n_sig_; i++)
 		z_sig.col(i) = h_lidar.transform(x_sigma_pred.col(i), n_z_lidar_);
 
 
@@ -440,7 +440,7 @@ pair< pair<VectorXd, MatrixXd>, MatrixXd> UKF::PredictMeasurementLidar(MatrixXd 
 
 	z_pred.setZero();
 
-	for(int i=0; i<z_sig.cols(); i++)
+	for(int i=0; i<n_sig_; i++)
 		z_pred += weights_(i)*z_sig.col(i);
 
 	//calculate measurement covariance matrix
@@ -449,7 +449,7 @@ pair< pair<VectorXd, MatrixXd>, MatrixXd> UKF::PredictMeasurementLidar(MatrixXd 
 	S.setZero();
 	VectorXd factor(n_z_lidar_);
 
-	for(int i=0; i<z_sig.cols(); i++)
+	for(int i=0; i<n_sig_; i++)
 	{
 	  factor = z_sig.col(i) - z_pred;
 	  //Normalization
@@ -480,7 +480,7 @@ void UKF::UpdateState(pair< pair<VectorXd, MatrixXd>, MatrixXd> predicted, Matri
 	pair<VectorXd, MatrixXd> z_estimated = predicted.first;
 	VectorXd z_pred = z_estimated.first;
 	MatrixXd z_sig = z_estimated.second;
-	VectorXd S = predicted.second;
+	MatrixXd S = predicted.second;
 
 	// Configure if it's a Radar or a Lidar measurement
 	int n_measurement;
