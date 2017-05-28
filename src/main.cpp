@@ -153,6 +153,8 @@ int main(int argc, char* argv[])
 	vector<VectorXd> estimations;
 	vector<VectorXd> ground_truth;
 
+	Tools tools;
+
 	// start filtering from the second frame (the speed is unknown in the first
 	// frame)
 
@@ -225,6 +227,9 @@ int main(int argc, char* argv[])
 		out_file_ << gt_pack_list[k].gt_values_(2) << "\t";
 		out_file_ << gt_pack_list[k].gt_values_(3) << "\n";
 
+		// force to write the file in each iteration
+		out_file_.flush();
+
 		// convert ukf x vector to cartesian to compare to ground truth
 		VectorXd ukf_x_cartesian_ = VectorXd(4);
 
@@ -238,10 +243,23 @@ int main(int argc, char* argv[])
 		estimations.push_back(ukf_x_cartesian_);
 		ground_truth.push_back(gt_pack_list[k].gt_values_);
 
+		// RMSE real time
+		vector<VectorXd> est;
+		vector<VectorXd> gt;
+
+		est.push_back(ukf_x_cartesian_);
+		gt.push_back(gt_pack_list[k].gt_values_);
+
+		VectorXd rmse = tools.CalculateRMSE(est, gt);
+
+		cout << "RMSE" << endl
+			 << rmse(0) << endl
+			 << rmse(1) << endl
+			 << rmse(2) << endl
+			 << rmse(3) << endl;
 	}
 
 	// compute the accuracy (RMSE)
-	Tools tools;
 	cout << "RMSE" << endl << tools.CalculateRMSE(estimations, ground_truth)
 			<< endl;
 
