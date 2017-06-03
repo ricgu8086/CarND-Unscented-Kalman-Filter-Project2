@@ -228,7 +228,7 @@ MatrixXd UKF::GenerateSigmaPoints(void)
 
 	double scaling_factor = sqrt(lambda_ + n_aug_);
 
-	for(int i=1; i<n_aug_; i++) // for my future self: n_aug_ is correct, don't use n_sig_
+	for(int i=0; i<n_aug_; i++) // for my future self: n_aug_ is correct, don't use n_sig_
 	{
 		sigma_p.col(i + 1) = x_augmented + scaling_factor*A.col(i);
 		sigma_p.col(i + 1 + n_aug_) = x_augmented - scaling_factor*A.col(i);
@@ -315,7 +315,7 @@ void UKF::PredictMeanCovariance(MatrixXd Sigma_p_pred)
 
 	for(int i=0; i<n_sig_; i++)
 	{
-		x_diff = Sigma_p_pred.col(i)- x_;
+		x_diff = Sigma_p_pred.col(i) - x_;
 		x_diff(3) = NormalizeAngle(x_diff(3));
 		P_ += weights_(i)*x_diff*x_diff.transpose();
 	}
