@@ -306,6 +306,8 @@ void UKF::PredictMeanCovariance(MatrixXd Sigma_p_pred)
 	for(int i=0; i<n_sig_; i++)
 		x_ += weights_(i)*Sigma_p_pred.col(i);
 
+	x_(3) = NormalizeAngle(x_(3));
+
 	// Covariance
 	P_.setZero();
 
@@ -314,6 +316,7 @@ void UKF::PredictMeanCovariance(MatrixXd Sigma_p_pred)
 	for(int i=0; i<n_sig_; i++)
 	{
 		x_diff = Sigma_p_pred.col(i)- x_;
+		x_diff(3) = NormalizeAngle(x_diff(3));
 		P_ += weights_(i)*x_diff*x_diff.transpose();
 	}
 }
@@ -520,6 +523,7 @@ void UKF::UpdateState(pair< pair<VectorXd, MatrixXd>, MatrixXd> predicted, Matri
 	z_err(1) = NormalizeAngle(z_err(1));
 
 	x_ = x_ + K*z_err;
+	x_(3) = NormalizeAngle(x_(3));
 
 	P_ = P_ - K*S*K.transpose();
 
