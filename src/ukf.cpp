@@ -28,10 +28,10 @@ UKF::UKF()
 	P_.setZero();
 
 	// Process noise standard deviation longitudinal acceleration in m/s^2
-	std_a_ = 30;
+	std_a_ = 0.355;
 
 	// Process noise standard deviation yaw acceleration in rad/s^2
-	std_yawdd_ = 30;
+	std_yawdd_ = 1.35;
 
 	// Laser measurement noise standard deviation position1 in m
 	std_laspx_ = 0.15;
@@ -135,12 +135,6 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
 		if(meas_package.sensor_type_ == MeasurementPackage::LASER)
 		{
 			x_ << meas_package.raw_measurements_[0], meas_package.raw_measurements_[1], 0, 0, 0;
-
-			P_(0,0) = std_laspx_;
-			P_(1,1) = std_laspy_;
-			P_(2,2) = 10;
-			P_(3,3) = 10;
-			P_(4,4) = 10;
 		}
 		else
 		{
@@ -149,13 +143,13 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
 			double rho = meas_package.raw_measurements_[0];
 			double phi = meas_package.raw_measurements_[1];
 			x_ << rho*cos(phi), rho*sin(phi), 0, 0, 0;
-
-			P_(0,0) = std_radr_; // std_radr_ is bigger than std_radphi_
-			P_(1,1) = std_radr_;
-			P_(2,2) = 10;
-			P_(3,3) = 10;
-			P_(4,4) = 10;
 		}
+
+		P_ << 	0.02	, 0		, 0		, 0		, 0		,
+				0		, 0.02	, 0		, 0		, 0		,
+				0		, 0		, 0.2	, 0		, 0		,
+				0		, 0		, 0		, 0.1	, 0		,
+				0		, 0		, 0		, 0		, 0.1	;
 
 		previous_timestamp_ = meas_package.timestamp_;
 		is_initialized_ = true;
@@ -219,7 +213,8 @@ MatrixXd UKF::GenerateSigmaPoints(void)
 	MatrixXd p_augmented(n_aug_, n_aug_);
 	p_augmented.setZero();
 	p_augmented.topLeftCorner(n_x_, n_x_) = P_;
-	p_augmented.bottomRightCorner(2, 2) = std_a_*std_a_*MatrixXd::Identity(2,2); // std_a_ = std_yawdd_
+	p_augmented(5,5) = std_a_*std_a_;
+	p_augmented(6,6) = std_yawdd_*std_yawdd_;
 
 
 
