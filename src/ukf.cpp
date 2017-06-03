@@ -256,39 +256,39 @@ MatrixXd UKF::PredictSigmaPoints(MatrixXd Sigma_p, double delta_t)
 VectorXd UKF::ProcessModel(VectorXd SigmaPoint, double delta_t)
 {
 	VectorXd SigmaPointPred(n_x_), x, operand1(n_x_), operand2(n_x_);
-	double v, psi, psi_dot, nu_a, nu_psi_dotdot;
+	double v, yaw, yaw_dot, nu_a, nu_yaw_dotdot;
 
 
 	x = SigmaPoint;
 
 	v = x(2);
-	psi = x(3);
-	psi_dot = x(4);
+	yaw = x(3);
+	yaw_dot = x(4);
 	nu_a = x(5);
-	nu_psi_dotdot = x(6);
+	nu_yaw_dotdot = x(6);
 
-	if (fabs(psi_dot) < 0.0001 ) // it's zero
+	if (fabs(yaw_dot) < 0.0001 ) // it's zero
 	{
-		operand1 << v*cos(psi)*delta_t,
-					v*sin(psi)*delta_t,
+		operand1 << v*cos(yaw)*delta_t,
+					v*sin(yaw)*delta_t,
 					0,
-					psi_dot*delta_t,
+					yaw_dot*delta_t,
 					0;
 	}
 	else //it's not zero
 	{
-		operand1 << max(v/psi_dot, 0.0001)*(sin(psi + psi_dot*delta_t) - sin(psi)),
-					max(v/psi_dot, 0.0001)*(-cos(psi + psi_dot*delta_t) + cos(psi)),
+		operand1 << max(v/yaw_dot, 0.0001)*(sin(yaw + yaw_dot*delta_t) - sin(yaw)),
+					max(v/yaw_dot, 0.0001)*(-cos(yaw + yaw_dot*delta_t) + cos(yaw)),
 					0,
-					psi_dot*delta_t,
+					yaw_dot*delta_t,
 					0;
 	}
 
-	operand2 << 1/2.0*delta_t*delta_t*cos(psi)*nu_a,
-				1/2.0*delta_t*delta_t*sin(psi)*nu_a,
+	operand2 << 1/2.0*delta_t*delta_t*cos(yaw)*nu_a,
+				1/2.0*delta_t*delta_t*sin(yaw)*nu_a,
 				delta_t*nu_a,
-				1/2.0*delta_t*delta_t*nu_psi_dotdot,
-				delta_t*nu_psi_dotdot;
+				1/2.0*delta_t*delta_t*nu_yaw_dotdot,
+				delta_t*nu_yaw_dotdot;
 
 	SigmaPointPred = x.head(n_x_) + operand1 + operand2;
 
@@ -356,12 +356,12 @@ pair< pair<VectorXd, MatrixXd>, MatrixXd>  UKF::PredictMeasurementRadar(MatrixXd
 			double px = sigma_p(0);
 			double py = sigma_p(1);
 			double v = sigma_p(2);
-			double psi = sigma_p(3);
-			double psi_dot = sigma_p(4);
+			double yaw = sigma_p(3);
+			double yaw_dot = sigma_p(4);
 
 			double rho = sqrt(px*px + py*py); // rho
 			double phi = atan2(py, px); // phi
-			double rho_dot = (px*cos(psi)*v + py*sin(psi)*v)/max(rho, 0.0001); // avoiding division by 0
+			double rho_dot = (px*cos(yaw)*v + py*sin(yaw)*v)/max(rho, 0.0001); // avoiding division by 0
 
 			VectorXd measurement(n_z_radar_);
 			measurement << rho, phi, rho_dot;
@@ -418,8 +418,8 @@ pair< pair<VectorXd, MatrixXd>, MatrixXd> UKF::PredictMeasurementLidar(MatrixXd 
 			double px = sigma_p(0);
 			double py = sigma_p(1);
 			double v = sigma_p(2);
-			double psi = sigma_p(3);
-			double psi_dot = sigma_p(4);
+			double yaw = sigma_p(3);
+			double yaw_dot = sigma_p(4);
 
 			VectorXd measurement(n_z_lidar_);
 			measurement << px, py;
