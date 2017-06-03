@@ -214,8 +214,6 @@ MatrixXd UKF::GenerateSigmaPoints(void)
 	VectorXd x_augmented(n_aug_);
 	x_augmented.setZero();
 	x_augmented.head(n_x_) = x_;
-	x_augmented(n_aug_-2) = std_a_;
-	x_augmented(n_aug_-1) = std_yawdd_;
 
 	// Create augmented covariance matrix p
 	MatrixXd p_augmented(n_aug_, n_aug_);
@@ -237,8 +235,8 @@ MatrixXd UKF::GenerateSigmaPoints(void)
 
 	for(int i=1; i<n_aug_; i++) // for my future self: n_aug_ is correct, don't use n_sig_
 	{
-		sigma_p.col(i) = x_augmented + scaling_factor*A.col(i);
-		sigma_p.col(i + n_aug_) = x_augmented - scaling_factor*A.col(i);
+		sigma_p.col(i + 1) = x_augmented + scaling_factor*A.col(i);
+		sigma_p.col(i + 1 + n_aug_) = x_augmented - scaling_factor*A.col(i);
 	}
 
 	return sigma_p;
