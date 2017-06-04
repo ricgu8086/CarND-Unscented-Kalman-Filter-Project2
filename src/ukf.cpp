@@ -28,7 +28,7 @@ UKF::UKF()
 	P_.setZero();
 
 	// Process noise standard deviation longitudinal acceleration in m/s^2
-	std_a_ = 0.355;
+	std_a_ = 2.0;
 
 	// Process noise standard deviation yaw acceleration in rad/s^2
 	std_yawdd_ = 1.35;
@@ -94,7 +94,7 @@ UKF::UKF()
 				0						, std_laspy_*std_laspy_;
 
 	// Sigma point spreading parameter
-	lambda_ = 3 - n_x_;
+	lambda_ = 3 - n_aug_;
 
 	// Weights of sigma points
 	weights_ = VectorXd(n_sig_);
@@ -162,6 +162,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
 	/**************/
 
 	double dt = (meas_package.timestamp_ - previous_timestamp_) / 1000000.0; // dt in seconds
+	previous_timestamp_ = meas_package.timestamp_;
 
 	MatrixXd x_sigma_pred = Prediction(dt);
 
