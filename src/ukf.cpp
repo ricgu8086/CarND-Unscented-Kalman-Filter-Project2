@@ -31,7 +31,7 @@ UKF::UKF()
 	std_a_ = 2.0;
 
 	// Process noise standard deviation yaw acceleration in rad/s^2
-	std_yawdd_ = 1.35;
+	std_yawdd_ = 0.3;
 
 	// Laser measurement noise standard deviation position1 in m
 	std_laspx_ = 0.15;
@@ -49,21 +49,18 @@ UKF::UKF()
 	std_radrd_ = 0.3;
 
 	/**
-	 TODO:
-
 	 Complete the initialization. See ukf.h for other member properties.
-
 	 Hint: one or more values initialized above might be wildly off...
 	 */
 
-	// time when the state is true, in us
-	time_us_ = 0;
-
-	// Previous timestamp in microseconds
-	previous_timestamp_ = 0;
-
 	// initially set to false, set to true in first call of ProcessMeasurement
 	is_initialized_ = false;
+
+	// time when the state is true, in us
+	previous_timestamp_ = 0.0;
+
+	// Previous timestamp in microseconds
+	previous_timestamp_ = 0.0;
 
 	// State dimension
 	n_x_ = 5;
@@ -74,43 +71,27 @@ UKF::UKF()
 	// Number of Sigma points
 	n_sig_ = 2*n_aug_+1;
 
-	// Dimension of Lidar measurement space
-	n_z_lidar_ = 2;
-
-	// Dimension of Radar measurement space
-	n_z_radar_ = 3;
-
-	// Measurement noise for radar
-	R_radar_ = MatrixXd(n_z_radar_, n_z_radar_);
-
-	R_radar_ << std_radr_*std_radr_ , 0							, 0,
-				0					, std_radphi_*std_radphi_	, 0,
-				0					, 0							, std_radrd_*std_radrd_;
-
-	// Measurement noise for lidar
-	R_lidar_ = MatrixXd(n_z_lidar_, n_z_lidar_);
-
-	R_lidar_ << std_laspx_*std_laspx_	, 0,
-				0						, std_laspy_*std_laspy_;
-
 	// Sigma point spreading parameter
 	lambda_ = 3 - n_aug_;
 
-	// Weights of sigma points
-	weights_ = VectorXd(n_sig_);
+	// predicted sigma points matrix
+	Xsig_pred_ = MatrixXd(n_x_, 2 * n_aug_ + 1);
 
-	weights_(0) = lambda_/(lambda_ + n_aug_);
+	// Weights of sigma points
+	weights_ = VectorXd(2 * n_aug_ + 1);
+
+	weights_(0) = lambda_ / (lambda_ + n_aug_);
 
 	double w = 1/(2*(lambda_ + n_aug_));
 
-	for(int i=1; i<n_sig_; i++)
+	for(int i=1; i<2 * n_aug_ + 1; i++)
 		weights_(i) = w;
 
 	// the current NIS for radar
-	NIS_radar_ = 0;
+	NIS_radar_ = 0.0;
 
 	// the current NIS for laser
-	NIS_laser_ = 0;
+	NIS_laser_ = 0.0;
 }
 
 UKF::~UKF()
@@ -124,54 +105,69 @@ UKF::~UKF()
 void UKF::ProcessMeasurement(MeasurementPackage meas_package)
 {
 	/**
-
 	 Complete this function! Make sure you switch between lidar and radar
 	 measurements.
 	 */
 
-	if(!is_initialized_)
+	// skip predict/update if sensor type is ignored
+	if ((meas_package.sensor_type_ == MeasurementPackage::RADAR && use_radar_)
+		|| (meas_package.sensor_type_ == MeasurementPackage::LASER && use_laser_))
 	{
-		//Initialize state x, P and timestamp
-		if(meas_package.sensor_type_ == MeasurementPackage::LASER)
+		if (!is_initialized_)
 		{
-			x_ << meas_package.raw_measurements_[0], meas_package.raw_measurements_[1], 0, 0, 0;
+			//Initialize state x, P and timestamp
+
+			// first measurement
+			x_ << 1, 1, 1, 1, 0.1;
+
+			// init covariance matrix
+			P_ << 	0.15, 0		, 0		, 0		, 0,
+					0	, 0.15	, 0		, 0		, 0,
+					0	, 0		, 1		, 0		, 0,
+					0	, 0		, 0		, 1		, 0,
+					0	, 0		, 0		, 0		, 1;
+
+			if (meas_package.sensor_type_ == MeasurementPackage::LASER && use_laser_)
+			{
+				x_(0) = meas_package.raw_measurements_(0);
+				x_(1) = meas_package.raw_measurements_(1);
+			}
+			else if (meas_package.sensor_type_ == MeasurementPackage::RADAR	&& use_radar_)
+			{
+				// Convert radar from polar to cartesian coordinates and initialize state.
+				double ro = meas_package.raw_measurements_(0);
+				double phi = meas_package.raw_measurements_(1);
+
+				x_(0) = ro * cos(phi);
+				x_(1) = ro * sin(phi);
+			}
+
+			previous_timestamp_ = meas_package.timestamp_;
+			is_initialized_ = true;
+
+			return;
 		}
-		else
-		{
-			// Convert radar from polar to cartesian coordinates and initialize state.
 
-			double rho = meas_package.raw_measurements_[0];
-			double phi = meas_package.raw_measurements_[1];
-			x_ << rho*cos(phi), rho*sin(phi), 0, 0, 0;
-		}
+		/* Prediction */
+		/**************/
 
-		P_ << 	0.02	, 0		, 0		, 0		, 0		,
-				0		, 0.02	, 0		, 0		, 0		,
-				0		, 0		, 0.2	, 0		, 0		,
-				0		, 0		, 0		, 0.1	, 0		,
-				0		, 0		, 0		, 0		, 0.1	;
-
+		double dt = (meas_package.timestamp_ - previous_timestamp_) / 1000000.0; // dt in seconds
 		previous_timestamp_ = meas_package.timestamp_;
-		is_initialized_ = true;
 
-		return;
+		Prediction(dt);
 
+		/* Update */
+		/*********/
+
+		if (meas_package.sensor_type_ == MeasurementPackage::LASER)
+		{
+			UpdateLidar(meas_package);
+		}
+		else if (meas_package.sensor_type_ == MeasurementPackage::RADAR)
+		{
+			UpdateRadar(meas_package);
+		}
 	}
-
-	/* Prediction */
-	/**************/
-
-	double dt = (meas_package.timestamp_ - previous_timestamp_) / 1000000.0; // dt in seconds
-	previous_timestamp_ = meas_package.timestamp_;
-
-	MatrixXd x_sigma_pred = Prediction(dt);
-
-
-
-	/* Update */
-	/*********/
-
-	Update(x_sigma_pred, meas_package);
 }
 
 /**
@@ -179,292 +175,224 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
  * @param {double} delta_t the change in time (in seconds) between the last
  * measurement and this one.
  */
-MatrixXd UKF::Prediction(double delta_t)
+void UKF::Prediction(double delta_t)
 {
 	/**
 	 Complete this function! Estimate the object's location. Modify the state
 	 vector, x_. Predict sigma points, the state, and the state covariance matrix.
 	 */
 
-	/* Generate Sigma Points */
-	MatrixXd x_sigma = GenerateSigmaPoints();
+	/* Generate the sigma points that represent the distribution */
 
-	/* Predict Sigma Points */
-	MatrixXd x_sigma_pred = PredictSigmaPoints(x_sigma, delta_t);
+	//create sigma point matrix
+	MatrixXd Xsig = MatrixXd(n_x_, 2 * n_x_ + 1);
 
-	/* Predict Mean and Covariance */
-	PredictMeanCovariance(x_sigma_pred);
+	//calculate square root of P
+	MatrixXd A = P_.llt().matrixL();
 
-	return x_sigma_pred;
-}
+	//set lambda for non-augmented sigma points
+	lambda_ = 3 - n_x_;
 
-/**
- * Generate the sigma points that represent the distribution
- */
-MatrixXd UKF::GenerateSigmaPoints(void)
-{
+	//set first column of sigma point matrix
+	Xsig.col(0) = x_;
+
+	//set remaining sigma points
+	for (int i = 0; i < n_x_; i++)
+	{
+		Xsig.col(i + 1) = x_ + sqrt(lambda_ + n_x_) * A.col(i);
+		Xsig.col(i + 1 + n_x_) = x_ - sqrt(lambda_ + n_x_) * A.col(i);
+	}
+
 	// Augmentation step
 
 	// Create augmented mean state x
 	VectorXd x_augmented(n_aug_);
 	x_augmented.setZero();
-	x_augmented.head(n_x_) = x_;
+	x_augmented.head(5) = x_;
 
 	// Create augmented covariance matrix p
-	MatrixXd p_augmented(n_aug_, n_aug_);
-	p_augmented.setZero();
-	p_augmented.topLeftCorner(n_x_, n_x_) = P_;
-	p_augmented(5,5) = std_a_*std_a_;
-	p_augmented(6,6) = std_yawdd_*std_yawdd_;
+	MatrixXd P_aug = MatrixXd(n_aug_, n_aug_);
+	P_aug.setZero();
+	P_aug.topLeftCorner(5, 5) = P_;
+	P_aug(5, 5) = std_a_ * std_a_;
+	P_aug(6, 6) = std_yawdd_ * std_yawdd_;
 
+	//create sigma point matrix
+	MatrixXd Xsig_aug = MatrixXd(n_aug_, n_sig_);
 
+	//set lambda for augmented sigma points
+	lambda_ = 3 - n_aug_;
 
-	MatrixXd sigma_p(n_aug_, n_sig_);
+	//create square root matrix
+	MatrixXd L = P_aug.llt().matrixL();
 
-
-	sigma_p.col(0) = x_augmented;
-
-	//calculate square root of P
-	MatrixXd A = p_augmented.llt().matrixL();
+	//create augmented sigma points
+	Xsig_aug.col(0) = x_augmented;
 
 	double scaling_factor = sqrt(lambda_ + n_aug_);
 
-	for(int i=0; i<n_aug_; i++) // for my future self: n_aug_ is correct, don't use n_sig_
+	for (int i=0; i<n_aug_; i++)
 	{
-		sigma_p.col(i + 1) = x_augmented + scaling_factor*A.col(i);
-		sigma_p.col(i + 1 + n_aug_) = x_augmented - scaling_factor*A.col(i);
+		Xsig_aug.col(i + 1) = x_augmented + scaling_factor * L.col(i);
+		Xsig_aug.col(i + 1 + n_aug_) = x_augmented - scaling_factor * L.col(i);
 	}
 
-	return sigma_p;
-}
+	/*  Predict Sigma Points */
+	/*************************/
 
-/**
- * Move the sigma points through the process model
- */
-MatrixXd UKF::PredictSigmaPoints(MatrixXd Sigma_p, double delta_t)
-{
-	MatrixXd predicted(n_x_, n_sig_);
+	double px, py, v, yaw, yaw_dot, nu_a, nu_yaw_dot, px_p, py_p, v_p, yaw_p, yaw_dot_p;
 
-	for(int i=0; i<n_sig_; i++)
-		predicted.col(i) = ProcessModel(Sigma_p.col(i), delta_t);
-
-	return predicted;
-}
-
-/**
- * Apply the CTRV process model
- */
-VectorXd UKF::ProcessModel(VectorXd SigmaPoint, double delta_t)
-{
-	VectorXd SigmaPointPred(n_x_), x, operand1(n_x_), operand2(n_x_);
-	double v, yaw, yaw_dot, nu_a, nu_yaw_dotdot;
-
-
-	x = SigmaPoint;
-
-	v = x(2);
-	yaw = x(3);
-	yaw_dot = x(4);
-	nu_a = x(5);
-	nu_yaw_dotdot = x(6);
-
-	if (fabs(yaw_dot) < 0.0001 ) // it's zero
+	for (int i=0; i<n_sig_; i++)
 	{
-		operand1 << v*cos(yaw)*delta_t,
-					v*sin(yaw)*delta_t,
-					0,
-					yaw_dot*delta_t,
-					0;
-	}
-	else //it's not zero
-	{
-		operand1 << max(v/yaw_dot, 0.0001)*(sin(yaw + yaw_dot*delta_t) - sin(yaw)),
-					max(v/yaw_dot, 0.0001)*(-cos(yaw + yaw_dot*delta_t) + cos(yaw)),
-					0,
-					yaw_dot*delta_t,
-					0;
+		px = Xsig_aug(0, i);
+		py = Xsig_aug(1, i);
+		v = Xsig_aug(2, i);
+		yaw = Xsig_aug(3, i);
+		yaw_dot = Xsig_aug(4, i);
+		nu_a = Xsig_aug(5, i);
+		nu_yaw_dot = Xsig_aug(6, i);
+
+
+		// avoid division by zero
+		if (fabs(yaw_dot > 0.001))
+		{
+			px_p = px + v / yaw_dot * (sin(yaw + yaw_dot * delta_t) - sin(yaw));
+			py_p = py + v / yaw_dot * (cos(yaw) - cos(yaw + yaw_dot * delta_t));
+		}
+		else  // it's zero
+		{
+			px_p = px + v * delta_t * cos(yaw);
+			py_p = py + v * delta_t * sin(yaw);
+		}
+
+		v_p = v;
+		yaw_p = yaw + yaw_dot * delta_t;
+		yaw_dot_p = yaw_dot;
+
+		// add noise
+		px_p = px_p + 0.5 * nu_a * delta_t * delta_t * cos(yaw);
+		py_p = py_p + 0.5 * nu_a * delta_t * delta_t * sin(yaw);
+		v_p = v_p + nu_a * delta_t;
+
+		yaw_p = yaw_p + 0.5 * nu_yaw_dot * delta_t * delta_t;
+		yaw_dot_p = yaw_dot_p + nu_yaw_dot * delta_t;
+
+		Xsig_pred_(0, i) = px_p;
+		Xsig_pred_(1, i) = py_p;
+		Xsig_pred_(2, i) = v_p;
+		Xsig_pred_(3, i) = yaw_p;
+		Xsig_pred_(4, i) = yaw_dot_p;
 	}
 
-	operand2 << 1/2.0*delta_t*delta_t*cos(yaw)*nu_a,
-				1/2.0*delta_t*delta_t*sin(yaw)*nu_a,
-				delta_t*nu_a,
-				1/2.0*delta_t*delta_t*nu_yaw_dotdot,
-				delta_t*nu_yaw_dotdot;
+	/* Recover the approximate gaussian distribution from predicted sigma points */
 
-	SigmaPointPred = x.head(n_x_) + operand1 + operand2;
-
-	return SigmaPointPred;
-}
-
-/**
- * Recover the approximate gaussian distribution from predicted sigma points
- */
-void UKF::PredictMeanCovariance(MatrixXd Sigma_p_pred)
-{
-	// Mean
 	x_.setZero();
 
-	for(int i=0; i<n_sig_; i++)
-		x_ += weights_(i)*Sigma_p_pred.col(i);
+	for (int i=0; i <n_sig_; i++)
+		x_ = x_ + weights_(i) * Xsig_pred_.col(i);
 
-	x_(3) = NormalizeAngle(x_(3));
-
-	// Covariance
 	P_.setZero();
 
 	VectorXd x_diff;
 
-	for(int i=0; i<n_sig_; i++)
+	for (int i=0; i<n_sig_; i++)
 	{
-		x_diff = Sigma_p_pred.col(i) - x_;
+		x_diff = Xsig_pred_.col(i) - x_;
 		x_diff(3) = NormalizeAngle(x_diff(3));
-		P_ += weights_(i)*x_diff*x_diff.transpose();
-	}
-}
 
-void UKF::Update(MatrixXd x_sigma_pred, MeasurementPackage meas_package)
-{
-	pair< pair<VectorXd, MatrixXd>, MatrixXd> predicted;
-
-	/* Predict Measurement */
-	if(meas_package.sensor_type_ == MeasurementPackage::LASER)
-	{
-		predicted = PredictMeasurementLidar(x_sigma_pred);
+		P_ = P_ + weights_(i) * x_diff * x_diff.transpose();
 	}
-	else
-	{
-		predicted = PredictMeasurementRadar(x_sigma_pred);
-	}
-
-	/* Update State */
-	UpdateState(predicted, x_sigma_pred, meas_package);
 
 }
 
 /**
- * Convert the sigma points from the state space to the Radar measurement space.
- */
-pair< pair<VectorXd, MatrixXd>, MatrixXd>  UKF::PredictMeasurementRadar(MatrixXd sigma_points)
-{
-	// create matrix for sigma points in measurement space
-	MatrixXd z_sig = MatrixXd(n_z_radar_, n_sig_);
-
-	// transform sigma points into measurement space
-	struct
-	{
-		VectorXd transform(VectorXd sigma_p, int n_z_radar_)
-		{
-			double px = sigma_p(0);
-			double py = sigma_p(1);
-			double v = sigma_p(2);
-			double yaw = sigma_p(3);
-			double yaw_dot = sigma_p(4);
-
-			double rho = sqrt(px*px + py*py); // rho
-			double phi = atan2(py, px); // phi
-			double rho_dot = (px*cos(yaw)*v + py*sin(yaw)*v)/max(rho, 0.0001); // avoiding division by 0
-
-			VectorXd measurement(n_z_radar_);
-			measurement << rho, phi, rho_dot;
-
-			return measurement;
-		}
-	} h_radar;
-
-	for(int i=0; i<n_sig_; i++)
-		z_sig.col(i) = h_radar.transform(sigma_points.col(i), n_z_radar_);
-
-
-	//calculate mean predicted measurement
-	VectorXd z_pred = VectorXd(n_z_radar_);
-
-	z_pred.setZero();
-
-	for(int i=0; i<n_sig_; i++)
-		z_pred += weights_(i)*z_sig.col(i);
-
-	//calculate measurement covariance matrix
-	MatrixXd S = MatrixXd(n_z_radar_,n_z_radar_);
-
-	S.setZero();
-	VectorXd factor(n_z_radar_);
-
-	for(int i=0; i<n_sig_; i++)
-	{
-	  factor = z_sig.col(i) - z_pred;
-	  //Normalization
-	  factor(1) = NormalizeAngle(factor(1));
-	  S += weights_(i)*factor*factor.transpose();
-	}
-
-	//add measurement noise covariance matrix
-	S += R_radar_;
-
-	return make_pair(make_pair(z_pred, z_sig), S);
-}
-
-/**
- * Convert the sigma points from the state space to the Lidar measurement space.
- */
-pair< pair<VectorXd, MatrixXd>, MatrixXd> UKF::PredictMeasurementLidar(MatrixXd x_sigma_pred)
-{
-	// create matrix for sigma points in measurement space
-	MatrixXd z_sig = MatrixXd(n_z_lidar_, n_sig_);
-
-	// transform sigma points into measurement space
-	struct
-	{
-		VectorXd transform(VectorXd sigma_p, int n_z_lidar_)
-		{
-			double px = sigma_p(0);
-			double py = sigma_p(1);
-			double v = sigma_p(2);
-			double yaw = sigma_p(3);
-			double yaw_dot = sigma_p(4);
-
-			VectorXd measurement(n_z_lidar_);
-			measurement << px, py;
-			return measurement;
-		}
-	} h_lidar;
-
-	for(int i=0; i<n_sig_; i++)
-		z_sig.col(i) = h_lidar.transform(x_sigma_pred.col(i), n_z_lidar_);
-
-
-	//calculate mean predicted measurement
-	VectorXd z_pred = VectorXd(n_z_lidar_);
-
-	z_pred.setZero();
-
-	for(int i=0; i<n_sig_; i++)
-		z_pred += weights_(i)*z_sig.col(i);
-
-	//calculate measurement covariance matrix
-	MatrixXd S = MatrixXd(n_z_lidar_,n_z_lidar_);
-
-	S.setZero();
-	VectorXd factor(n_z_lidar_);
-
-	for(int i=0; i<n_sig_; i++)
-	{
-	  factor = z_sig.col(i) - z_pred;
-	  //Normalization
-	  factor(1) = NormalizeAngle(factor(1));
-	  S += weights_(i)*factor*factor.transpose();
-	}
-
-	//add measurement noise covariance matrix
-	S += R_lidar_;
-
-	return make_pair(make_pair(z_pred, z_sig), S);
-}
-
-/**
- * Updates the state and the state covariance matrix using a measurement.
+ * Updates the state and the state covariance matrix using a laser measurement.
  * @param {MeasurementPackage} meas_package
  */
-void UKF::UpdateState(pair< pair<VectorXd, MatrixXd>, MatrixXd> predicted, MatrixXd x_sigma_pred, MeasurementPackage meas_package)
+void UKF::UpdateLidar(MeasurementPackage meas_package)
+{
+	/**
+	 Complete this function! Use lidar data to update the belief about the object's
+	 position. Modify the state vector, x_, and covariance, P_.
+	 You'll also need to calculate the lidar NIS.
+	 */
+
+	VectorXd z = meas_package.raw_measurements_;
+	int n_z = 2;
+
+	MatrixXd Zsig = MatrixXd(n_z, n_sig_);
+
+	for (int i=0; i<n_sig_; i++)
+	{
+		Zsig(0, i) = Xsig_pred_(0, i); // px
+		Zsig(1, i) = Xsig_pred_(1, i); // py
+	}
+
+	//mean predicted measurement
+	VectorXd z_pred(n_z);
+	z_pred.setZero();
+
+	for (int i=0; i<n_sig_; i++)
+		z_pred = z_pred + weights_(i) * Zsig.col(i);
+
+	//measurement covariance matrix S
+	MatrixXd S(n_z, n_z);
+	S.setZero();
+
+	VectorXd z_diff;
+
+	for (int i=0; i<n_sig_; i++)
+	{
+		z_diff = Zsig.col(i) - z_pred;
+		S = S + weights_(i) * z_diff * z_diff.transpose();
+	}
+
+	//add measurement noise covariance matrix
+	MatrixXd R(n_z, n_z);
+	R << std_laspx_ * std_laspx_, 	0				,\
+		 0, 						std_laspy_ * std_laspy_;
+
+	S = S + R;
+
+
+	/*  UKF Update for Lidar*/
+	/************************/
+
+	//cross correlation matrix Tc
+	MatrixXd Tc(n_x_, n_z);
+
+	//calculate cross correlation matrix
+	Tc.setZero();
+	VectorXd x_diff;
+
+	for (int i=0; i<n_sig_; i++)
+	{
+		z_diff = Zsig.col(i) - z_pred;
+		x_diff = Xsig_pred_.col(i) - x_;
+
+		Tc = Tc + weights_(i) * x_diff * z_diff.transpose();
+	}
+
+	//Kalman gain K;
+	MatrixXd S_inv = S.inverse();
+	MatrixXd K = Tc * S_inv;
+
+	z_diff = z - z_pred;
+
+	//calculate NIS
+	NIS_laser_ = z_diff.transpose() * S_inv * z_diff;
+
+	//update state mean and covariance matrix
+	x_ = x_ + K * z_diff;
+	P_ = P_ - K * S * K.transpose();
+
+}
+
+/**
+ * Updates the state and the state covariance matrix using a radar measurement.
+ * @param {MeasurementPackage} meas_package
+ */
+void UKF::UpdateRadar(MeasurementPackage meas_package)
 {
 	/**
 	 Complete this function! Use radar data to update the belief about the object's
@@ -473,63 +401,98 @@ void UKF::UpdateState(pair< pair<VectorXd, MatrixXd>, MatrixXd> predicted, Matri
 	 You'll also need to calculate the radar NIS.
 	 */
 
-	// Unpack variables (really need c++11 tuples for this)
-	pair<VectorXd, MatrixXd> z_estimated = predicted.first;
-	VectorXd z_pred = z_estimated.first;
-	MatrixXd z_sig = z_estimated.second;
-	MatrixXd S = predicted.second;
+	VectorXd z = meas_package.raw_measurements_;
 
-	// Configure if it's a Radar or a Lidar measurement
-	int n_measurement;
-	double *NIS_p;
+	int n_z = 3;
 
-	if(meas_package.sensor_type_ == MeasurementPackage::LASER)
+
+	MatrixXd Zsig = MatrixXd(n_z, n_sig_);
+
+	double px, py, v, yaw, v1, v2;
+
+	for (int i=0; i<n_sig_; i++)
 	{
-		n_measurement = n_z_lidar_;
-		NIS_p = &NIS_laser_;
+		px = Xsig_pred_(0, i);
+		py = Xsig_pred_(1, i);
+		v = Xsig_pred_(2, i);
+		yaw = Xsig_pred_(3, i);
+
+		v1 = cos(yaw) * v;
+		v2 = sin(yaw) * v;
+
+		// measurement model
+		Zsig(0, i) = sqrt(px * px + py * py);                        //r
+		Zsig(1, i) = atan2(py, px);                                 //phi
+		Zsig(2, i) = (px*v1 + py*v2) / sqrt(px* px + py*py); //r_dot
 	}
-	else
+
+	//mean predicted measurement
+	VectorXd z_pred = VectorXd(n_z);
+	z_pred.setZero();
+
+	for (int i=0; i<n_sig_; i++)
+		z_pred = z_pred + weights_(i) * Zsig.col(i);
+
+	//measurement covariance matrix S
+	MatrixXd S = MatrixXd(n_z, n_z);
+	S.setZero();
+
+	VectorXd z_diff;
+
+	for (int i=0; i<n_sig_; i++)
 	{
-		n_measurement = n_z_radar_;
-		NIS_p = &NIS_radar_;
+		z_diff = Zsig.col(i) - z_pred;
+		z_diff(1) = NormalizeAngle(z_diff(1));
+
+		S = S + weights_(i) * z_diff * z_diff.transpose();
 	}
 
-	// Calculate cross correlation matrix
-	VectorXd factor1(n_x_), factor2(n_measurement);
-	MatrixXd Tc (n_x_, n_measurement);
+	MatrixXd R = MatrixXd(n_z, n_z);
 
+	R <<	std_radr_*std_radr_	, 0							, 0,
+			0					, std_radphi_*std_radphi_	, 0,
+			0					, 0							, std_radrd_*std_radrd_;
+
+	S = S + R;
+
+	//create matrix for cross correlation Tc
+	MatrixXd Tc = MatrixXd(n_x_, n_z);
+
+	/*****************************************************************************
+	 *  UKF Update for Radar
+	 ****************************************************************************/
+
+
+	//calculate cross correlation matrix
 	Tc.setZero();
 
-	for(int i=0; i<n_sig_; i++)
+	VectorXd x_diff;
+
+	for (int i=0; i<n_sig_; i++)
 	{
-	  factor1 = x_sigma_pred.col(i) - x_;
-	  // Angle normalization
-	  factor1(3) = NormalizeAngle(factor1(3));
+		z_diff = Zsig.col(i) - z_pred;
+		z_diff(1) = NormalizeAngle(z_diff(1));
 
-	  factor2 = z_sig.col(i) - z_pred;
-	  // Angle normalization
-	  factor2(1) = NormalizeAngle(factor2(1));
+		x_diff = Xsig_pred_.col(i) - x_;
+		x_diff(3) = NormalizeAngle(x_diff(3));
 
-	  Tc += weights_(i)*factor1*factor2.transpose();
+		Tc = Tc + weights_(i) * x_diff * z_diff.transpose();
 	}
 
-
-	// Calculate Kalman gain K;
+	//Kalman gain K;
 	MatrixXd S_inv = S.inverse();
-	MatrixXd K = Tc*S_inv;
+	MatrixXd K = Tc * S_inv;
 
-	// Update state mean and covariance matrix
-	VectorXd z_measured = meas_package.raw_measurements_;
-	VectorXd z_err = z_measured-z_pred;
-	z_err(1) = NormalizeAngle(z_err(1));
+	z_diff = z - z_pred;
+	z_diff(1) = NormalizeAngle(z_diff(1));
 
-	x_ = x_ + K*z_err;
-	x_(3) = NormalizeAngle(x_(3));
+	//calculate NIS
+	NIS_radar_ = z_diff.transpose() * S_inv * z_diff;
 
-	P_ = P_ - K*S*K.transpose();
+	//update state mean and covariance matrix
+	x_ = x_ + K * z_diff;
+	P_ = P_ - K * S * K.transpose();
 
-	// Compute NIS (Normalized Innovation Squared)
-	*NIS_p = z_err.transpose()*S_inv*z_err;
 }
 
 /**
@@ -549,3 +512,4 @@ double UKF::NormalizeAngle(double angle)
 	}
 	return angle;
 }
+
