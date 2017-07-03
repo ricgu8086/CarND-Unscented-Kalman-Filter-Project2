@@ -110,56 +110,23 @@ public:
 	void ProcessMeasurement(MeasurementPackage meas_package);
 
 	/**
-	 * Prediction predicts sigma points, the state and the state covariance
+	 * Prediction Predicts sigma points, the state, and the state covariance
 	 * matrix
 	 * @param delta_t Time between k and k+1 in s
 	 */
-	MatrixXd Prediction(double delta_t);
+	void Prediction(double delta_t);
 
 	/**
-	 * Generate the sigma points that represent the distribution
-	 */
-	MatrixXd GenerateSigmaPoints(void);
-
-	/**
-	 * Move the sigma points through the process model
-	 */
-	MatrixXd PredictSigmaPoints(MatrixXd Sigma_p, double delta_t);
-
-	/**
-	 * Apply the CTRV process model
-	 */
-	VectorXd ProcessModel(VectorXd SigmaPoint, double delta_t);
-
-	/**
-	 * Recover the approximate gaussian distribution from predicted sigma points
-	 */
-	void PredictMeanCovariance(MatrixXd Sigma_p_pred);
-
-	/*
-	 * Update estimates the upcoming measurement and incorporates the real measurement
-	 * into the state and the state covariance matrix
-	 */
-	void Update(MatrixXd x_sigma_pred, MeasurementPackage meas_package);
-
-	/**
-	 * Convert the sigma points from the state space to the Radar measurement space.
-	 */
-	std::pair< std::pair<VectorXd, MatrixXd>, MatrixXd> \
-		PredictMeasurementRadar(MatrixXd sigma_points);
-
-	/**
-	 * Convert the sigma points from the state space to the Lidar measurement space.
-	 */
-	std::pair< std::pair<VectorXd, MatrixXd>, MatrixXd> \
-		PredictMeasurementLidar(MatrixXd sigma_points);
-
-	/**
-	 * Updates the state and the state covariance matrix using a measurement
+	 * Updates the state and the state covariance matrix using a laser measurement
 	 * @param meas_package The measurement at k+1
 	 */
-	void UpdateState(std::pair< std::pair<VectorXd, MatrixXd>, MatrixXd> predicted, \
-			MatrixXd x_sigma_pred, MeasurementPackage meas_package);
+	void UpdateLidar(MeasurementPackage meas_package);
+
+	/**
+	 * Updates the state and the state covariance matrix using a radar measurement
+	 * @param meas_package The measurement at k+1
+	 */
+	void UpdateRadar(MeasurementPackage meas_package);
 
 	/**
 	 * Normalize an angle between -M_PI and M_PI

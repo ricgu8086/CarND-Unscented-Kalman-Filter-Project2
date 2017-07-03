@@ -11,7 +11,6 @@
 using namespace std;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
-using std::vector;
 
 void check_arguments(int argc, char* argv[])
 {
@@ -170,6 +169,8 @@ int main(int argc, char* argv[])
 		}
 	}
 
+	in_file_.close();
+
 	// Create a UKF instance
 	UKF ukf;
 
@@ -291,11 +292,6 @@ int main(int argc, char* argv[])
 	if (out_file_.is_open())
 	{
 		out_file_.close();
-	}
-
-	if (in_file_.is_open())
-	{
-		in_file_.close();
 	}
 
 	cout << "Done!" << endl;
