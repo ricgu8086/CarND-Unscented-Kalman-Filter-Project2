@@ -87,6 +87,19 @@ UKF::UKF()
 	for(int i=1; i<2 * n_aug_ + 1; i++)
 		weights_(i) = w;
 
+	// Measurement noise for radar
+	R_radar_ = MatrixXd(3, 3);
+
+	R_radar_ << std_radr_*std_radr_ , 0							, 0,
+				0					, std_radphi_*std_radphi_	, 0,
+				0					, 0							, std_radrd_*std_radrd_;
+
+	// Measurement noise for lidar
+	R_lidar_ = MatrixXd(2, 2);
+
+	R_lidar_ << std_laspx_*std_laspx_	, 0,
+				0						, std_laspy_*std_laspy_;
+
 	// the current NIS for radar
 	NIS_radar_ = 0.0;
 
@@ -142,6 +155,13 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
 				x_(1) = ro * sin(phi);
 			}
 
+			// For safety reasons. This code avoides arithmetic problems if the object is at the location of the measuring instrument.
+			if ( fabs(x_(0)) < 0.001 && fabs(x_(1)) < 0.0001 )  
+			{
+			   x_(0) = 0.001;
+			   x_(0) = 0.001;
+			}
+
 			previous_timestamp_ = meas_package.timestamp_;
 			is_initialized_ = true;
 
@@ -153,6 +173,15 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package)
 
 		double dt = (meas_package.timestamp_ - previous_timestamp_) / 1000000.0; // dt in seconds
 		previous_timestamp_ = meas_package.timestamp_;
+
+		// The following block helps to avoid numerical instability during prediction when dt is too big (suggested by the reviewer).
+		double max_step = 0.1;
+
+		while (dt > 0.2) 
+		{
+		    Prediction(max_step);
+		    dt -= max_step;
+		}
 
 		Prediction(dt);
 
@@ -348,11 +377,7 @@ void UKF::UpdateLidar(MeasurementPackage meas_package)
 	}
 
 	//add measurement noise covariance matrix
-	MatrixXd R(n_z, n_z);
-	R << std_laspx_ * std_laspx_, 	0				,\
-		 0, 						std_laspy_ * std_laspy_;
-
-	S = S + R;
+	S = S + R_lidar_;
 
 
 	/*  UKF Update for Lidar*/
@@ -421,9 +446,11 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
 		v2 = sin(yaw) * v;
 
 		// measurement model
-		Zsig(0, i) = sqrt(px * px + py * py);                        //r
-		Zsig(1, i) = atan2(py, px);                                 //phi
-		Zsig(2, i) = (px*v1 + py*v2) / sqrt(px* px + py*py); //r_dot
+		px = px < 0.001 ? 0.001 : px; // This is done to avoid arithmetic problems, i.e. division by zero
+		py = py < 0.001 ? 0.001 : py;
+		Zsig(0, i) = sqrt(px*px + py*py);                       // r
+		Zsig(1, i) = atan2(py, px);                   			// phi
+		Zsig(2, i) = (px*v1 + py*v2) / sqrt(px*px + py*py);   	// r_dot
 	}
 
 	//mean predicted measurement
@@ -447,13 +474,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package)
 		S = S + weights_(i) * z_diff * z_diff.transpose();
 	}
 
-	MatrixXd R = MatrixXd(n_z, n_z);
-
-	R <<	std_radr_*std_radr_	, 0							, 0,
-			0					, std_radphi_*std_radphi_	, 0,
-			0					, 0							, std_radrd_*std_radrd_;
-
-	S = S + R;
+	S = S + R_radar_;
 
 	//create matrix for cross correlation Tc
 	MatrixXd Tc = MatrixXd(n_x_, n_z);
